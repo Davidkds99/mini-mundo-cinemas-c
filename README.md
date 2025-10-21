@@ -1,232 +1,79 @@
-# Mini Mundo Cinemas (SQL)
+# Mini Mundo Cinemas (MySQL)
 
-Simulação de uma rede de cinemas — implementação em SQL.  
-Este repositório contém o modelo relacional, scripts de criação de esquema (schema), dados de exemplo (seed) e consultas úteis para simular operação de salas, sessões, vendas e ações de manutenção.
+Este repositório contém scripts MySQL para modelar e simular uma pequena rede de cinemas:
+- schema.sql — criação das tabelas (MySQL / InnoDB / utf8mb4)
+- seed.sql — dados de exemplo (cinemas, salas, filmes, sessões, funcionários, ingressos)
+- queries.sql — consultas úteis, relatórios e procedimento armazenado para venda de ingressos
 
 Sumário
-- Descrição
-- Objetivos
-- Estrutura de dados (tabelas principais)
-- Exemplo de schema (SQLite)
-- Dados de exemplo (seed)
-- Consultas / Relatórios úteis
-- Como executar (SQLite / PostgreSQL / MySQL)
-- Boas práticas e testes
-- Como contribuir
+- Sobre
+- Requisitos
+- Como aplicar os scripts (MySQL)
+- Procedimento para venda (exemplo)
+- Consultas úteis
+- Contribuição
 - Licença
 - Autor / Contato
 
-Descrição
---------
-O projeto modela as entidades de uma rede de cinemas (salas, filmes, sessões, ingressos, funcionários) usando SQL puro. Ideal para:
-- Estudar modelagem relacional e integridade referencial;
-- Praticar consultas SQL (joins, agregações, transações);
-- Simular regras de negócio (capacidade, ocupação, manutenção).
+Sobre
+-----
+Modelagem relacional para representar salas, sessões, filmes, ingressos e ações de manutenção. Scripts prontos para rodar em MySQL/InnoDB.
 
-Objetivos
----------
-- Especificar um schema claro e normalizado para o domínio;
-- Fornecer scripts reutilizáveis (CREATE TABLE, INSERT);
-- Incluir consultas que simulam operações do dia a dia (venda de ingresso, relatório de ocupação, ações de zeladoria).
+Requisitos
+----------
+- MySQL 5.7+ (recomendado 8.0) com suporte a InnoDB.
+- cliente mysql (CLI) ou ferramenta GUI (MySQL Workbench, DBeaver, etc).
 
-Estrutura de dados (tabelas principais)
---------------------------------------
-- cinemas: unidades físicas (opcional se houver mais de uma localidade)
-- salas: identificação, capacidade, estado (ativa, em_manutencao)
-- filmes: título, duração, classificação
-- sessoes: filme em uma sala num horário, capacidade disponível
-- ingressos: venda por sessão
-- funcionarios: diretor, zelador, etc.
-- acoes_manutenção: registros de ações do zelador/diretor em salas
+Como aplicar os scripts (linha de comando)
+------------------------------------------
+1. Clone o repositório e mude para a branch (se estiver usando a branch sugerida):
+   git checkout sql-mysql-scripts
 
-Observação: a modelagem abaixo visa ser simples e facilmente adaptável a diferentes SGBDs.
+2. Criar o banco e carregar schema + seed:
+   mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS mini_mundo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+   mysql -u root -p mini_mundo < schema.sql
+   mysql -u root -p mini_mundo < seed.sql
 
-Exemplo de schema (SQLite)
---------------------------
-```sql
--- schema.sql (exemplo para SQLite)
-PRAGMA foreign_keys = ON;
+   (ou, em uma única linha:)
+   mysql -u root -p -D mini_mundo < schema.sql
+   mysql -u root -p -D mini_mundo < seed.sql
 
-CREATE TABLE cinemas (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nome TEXT NOT NULL,
-  endereco TEXT
-);
+3. Carregar consultas/rotinas (opcional):
+   mysql -u root -p mini_mundo < queries.sql
 
-CREATE TABLE salas (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  cinema_id INTEGER NOT NULL REFERENCES cinemas(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  capacidade INTEGER NOT NULL CHECK(capacidade > 0),
-  estado TEXT NOT NULL DEFAULT 'ativa' CHECK(estado IN ('ativa','em_manutencao','fechada')),
-  descricao TEXT
-);
+Procedimento para vender ingressos (exemplo)
+-------------------------------------------
+No arquivo queries.sql há um procedimento armazenado chamado `vender_ingressos(p_sessao_id, p_qtd, p_success_out)`:
+- Ele usa transação e locks para evitar oversell.
+- Exemplo de uso:
+  CALL vender_ingressos(1, 5, @ok);
+  SELECT @ok; -- 1 = sucesso, 0 = falha (capacidade insuficiente ou entrada inválida)
 
-CREATE TABLE filmes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  titulo TEXT NOT NULL,
-  duracao_min INTEGER,
-  classificacao TEXT
-);
+Consultas úteis
+---------------
+Veja queries.sql para exemplos:
+- Ocupação atual por sessão
+- Sessões por sala
+- Relatório de manutenção
+- Relatório de ocupação por dia
 
-CREATE TABLE sessoes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  filme_id INTEGER NOT NULL REFERENCES filmes(id) ON DELETE CASCADE,
-  sala_id INTEGER NOT NULL REFERENCES salas(id) ON DELETE CASCADE,
-  inicio DATETIME NOT NULL,
-  preco REAL NOT NULL CHECK(preco >= 0),
-  UNIQUE(sala_id, inicio) -- evita sessões duplicadas na mesma sala/horário
-);
-
-CREATE TABLE ingressos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  sessao_id INTEGER NOT NULL REFERENCES sessoes(id) ON DELETE CASCADE,
-  quantidade INTEGER NOT NULL CHECK(quantidade > 0),
-  vendido_em DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE funcionarios (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nome TEXT NOT NULL,
-  cargo TEXT NOT NULL CHECK(cargo IN ('diretor','zelador','atendente','outro'))
-);
-
-CREATE TABLE acoes_manutencao (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  funcionario_id INTEGER NOT NULL REFERENCES funcionarios(id) ON DELETE SET NULL,
-  sala_id INTEGER NOT NULL REFERENCES salas(id) ON DELETE CASCADE,
-  acao TEXT NOT NULL,
-  registrado_em DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Índice para consultas frequentes
-CREATE INDEX idx_sessoes_sala_inicio ON sessoes(sala_id, inicio);
-CREATE INDEX idx_ingressos_sessao ON ingressos(sessao_id);
-```
-
-Dados de exemplo (seed)
------------------------
-```sql
--- seed.sql (exemplos)
-INSERT INTO cinemas (nome, endereco) VALUES ('Mini Mundo Centro', 'Rua A, 123');
-
-INSERT INTO salas (cinema_id, nome, capacidade) VALUES (1, 'Sala A', 120);
-INSERT INTO salas (cinema_id, nome, capacidade) VALUES (1, 'Sala B', 80);
-
-INSERT INTO filmes (titulo, duracao_min, classificacao) VALUES ('Viagem ao C', 110, '12');
-INSERT INTO filmes (titulo, duracao_min, classificacao) VALUES ('Aventura X', 95, '10');
-
-INSERT INTO sessoes (filme_id, sala_id, inicio, preco) VALUES (1, 1, '2025-10-21 19:30:00', 20.0);
-INSERT INTO sessoes (filme_id, sala_id, inicio, preco) VALUES (2, 2, '2025-10-21 18:00:00', 18.0);
-
-INSERT INTO funcionarios (nome, cargo) VALUES ('Carlos Diretor', 'diretor');
-INSERT INTO funcionarios (nome, cargo) VALUES ('Mariana Zeladora', 'zelador');
-
--- venda de ingressos
-INSERT INTO ingressos (sessao_id, quantidade) VALUES (1, 45);
-INSERT INTO ingressos (sessao_id, quantidade) VALUES (1, 10);
-INSERT INTO ingressos (sessao_id, quantidade) VALUES (2, 30);
-```
-
-Consultas / Relatórios úteis
-----------------------------
-- Ocupação atual de uma sessão:
-```sql
-SELECT s.id AS sessao_id, f.titulo,
-       SUM(COALESCE(i.quantidade,0)) AS ingressos_vendidos,
-       sa.capacidade,
-       ROUND( SUM(COALESCE(i.quantidade,0)) * 100.0 / sa.capacidade, 2) AS ocupacao_pct
-FROM sessoes s
-JOIN filmes f ON s.filme_id = f.id
-JOIN salas sa ON s.sala_id = sa.id
-LEFT JOIN ingressos i ON i.sessao_id = s.id
-WHERE s.id = ? -- id da sessão
-GROUP BY s.id, f.titulo, sa.capacidade;
-```
-
-- Sessões por sala:
-```sql
-SELECT sa.nome AS sala, s.inicio, f.titulo
-FROM sessoes s
-JOIN salas sa ON s.sala_id = sa.id
-JOIN filmes f ON s.filme_id = f.id
-ORDER BY sa.nome, s.inicio;
-```
-
-- Vender ingresso (transação, exemplo conceitual):
-```sql
--- Exemplo para SGBD que suporta transações (Postgres, MySQL, SQLite)
-BEGIN;
--- verificar capacidade disponível (implementar com SELECT FOR UPDATE em SGBDs que suportam)
--- inserir no ingresso quando houver disponibilidade
-INSERT INTO ingressos (sessao_id, quantidade) VALUES (?, ?);
-COMMIT;
-```
-
-- Relatório de manutenção:
-```sql
-SELECT a.registrado_em, func.nome, sa.nome AS sala, a.acao
-FROM acoes_manutencao a
-JOIN funcionarios func ON func.id = a.funcionario_id
-JOIN salas sa ON sa.id = a.sala_id
-ORDER BY a.registrado_em DESC;
-```
-
-Como executar (exemplos)
-------------------------
-Requisitos: um SGBD (SQLite, PostgreSQL ou MySQL) instalado.
-
-SQLite (rápido, sem servidor)
-```bash
-# criar banco e carregar schema + seed
-sqlite3 mini_mundo.db < schema.sql
-sqlite3 mini_mundo.db < seed.sql
-
-# abrir CLI
-sqlite3 mini_mundo.db
-```
-
-PostgreSQL (exemplo)
-```bash
-# criar DB (PSQL)
-createdb mini_mundo
-psql mini_mundo -f schema.sql
-psql mini_mundo -f seed.sql
-```
-
-MySQL (exemplo)
-```bash
-mysql -u root -p -e "CREATE DATABASE mini_mundo;"
-mysql -u root -p mini_mundo < schema.sql
-mysql -u root -p mini_mundo < seed.sql
-```
-
-Boas práticas e testes
----------------------
-- Use transações ao manipular vendas para evitar oversell (vender mais que a capacidade).
-- Validar entradas (quantidade > 0, horários coerentes).
-- Testes manuais sugeridos:
-  - Criar muitas vendas até lotação e validar cálculo de ocupação;
-  - Registrar manutenção e verificar mudança de estado da sala;
-  - Testar exclusão em cascata (deletar filme -> sessoes -> ingressos).
+Boas práticas
+------------
+- Use transações ao inserir vendas (já exemplificado).
+- Valide entradas na camada da aplicação (quantidade > 0, sessão existente).
+- Monitore índices (sessoes por sala, ingressos por sessao) para desempenho.
+- Em ambientes concorrentes, considere filas ou mecanismos de reserva para UX (reservas temporárias).
 
 Como contribuir
 ---------------
-1. Abra uma issue descrevendo bug ou melhoria.
-2. Proponha alterações no schema.sql/seed.sql em uma branch.
-3. Inclua exemplos de consultas e casos de teste.
-4. Faça PR com descrição clara de mudanças e impactos no modelo.
+1. Abra uma issue descrevendo a sugestão ou bug.
+2. Faça um fork e crie uma branch com nome descritivo (ex: feat/mysql-procs).
+3. Submeta um PR com descrição das mudanças e como testar.
 
 Licença
 -------
-Se desejar, recomendamos MIT para facilitar contribuições. Adicione um arquivo LICENSE com o texto da MIT License.
+Sugestão: MIT License — adicione um arquivo LICENSE se quiser tornar explícita a licença.
 
 Autor / Contato
 ---------------
 Davidkds99 — repositório: mini-mundo-cinemas-c
-
-Arquivos que posso gerar para você (opcional):
-- schema.sql (versão completa para o seu SGBD preferido)
-- seed.sql (dados de exemplo)
-- queries.sql (conjunto de consultas e relatórios)
-Quer que eu crie esses arquivos prontos para o repositório?
